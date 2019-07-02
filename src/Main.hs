@@ -2,26 +2,15 @@
 
 module Main where
 
-import Anim
-import World
+import qualified World as World
+import qualified Presentation as P
 
 import Graphics.Gloss
 import Graphics.Gloss.Interface.Pure.Game
 
+import Lens.Micro ((&))
+
 main :: IO ()
-main = play (InWindow "test" (800, 200) (10, 10)) black 60 initialWorld draw handleInput update
+main = play (InWindow "test" (800, 200) (10, 10)) black 60 P.initial P.draw P.handleInput P.update
 
-draw :: World -> Picture
-draw (World {_sprites}) = Pictures (map drawSprite _sprites)
-
-handleInput :: Event -> World -> World
-handleInput (EventKey (Char 'x') Down _ _) w@(World {_ranims}) = let
-  newRAnims = _ranims ++ jump
-  in w { _ranims = newRAnims }
-handleInput _ w = w
-
-update :: Float -> World -> World
-update t w@(World {_ranims}) = let
-  (newWorld, newAnims) = applyAnims w t _ranims
-  in newWorld { _ranims = newAnims }
-
+-- main = play (InWindow "test" (800, 200) (10, 10)) black 60 World.initialWorld World.draw World.handleInput World.update

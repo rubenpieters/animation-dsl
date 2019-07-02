@@ -86,3 +86,7 @@ stepTween t duration (To x) currentValue =
   (x - currentValue) * t / duration
 stepTween t duration (From x) currentValue =
   error "TODO stepTween"
+
+ix' :: Int -> Lens' [a] a
+ix' i = lens (!! i) (\s b -> take i s ++ b : drop (i+1) s)
+
