@@ -10,16 +10,21 @@ import Lens.Micro
 -- duration in s
 type Duration = Float
 
+-- delay in s
+type Delay = Float
+
 data Anim obj where
   Seq :: [Anim obj] -> Anim obj
   Par :: [Anim obj] -> Anim obj
-  Base :: Duration -> Lens' obj Float -> Tween Float -> Anim obj
+  Base :: Duration -> Traversal' obj Float -> Tween Float -> Anim obj
+  Set :: Delay -> Traversal' obj value -> (obj -> value) -> Anim obj
   Create :: Int -> (obj -> (obj, Int)) -> ([Int] -> Anim obj) -> Anim obj
 
 instance Show (Anim obj) where
   show (Seq anims) = "Seq (" ++ intercalate "," (map show anims) ++ ")"
   show (Par anims) = "Par (" ++ intercalate "," (map show anims) ++ ")"
   show (Base duration lens tween) = "Base " ++ show duration ++ " (s)"
+  show (Set delay lens value) = "Set " ++ show delay ++ " (s)"
   show (Create index _ f) = "Create " ++ show index ++ " (" ++ show (f []) ++ ")"
 
 data Tween value
@@ -29,12 +34,14 @@ data Tween value
 
 data RAnim obj where
   OnFinish :: [RAnim obj] -> Anim obj -> RAnim obj
-  RBase :: Duration -> Lens' obj Float -> Tween Float -> RAnim obj
+  RBase :: Duration -> Traversal' obj Float -> Tween Float -> RAnim obj
+  RSet :: Delay -> Traversal' obj value -> (obj -> value) -> RAnim obj
   RCreate :: Int -> (obj -> (obj, Int)) -> ([Int] -> Anim obj) -> RAnim obj
 
 instance Show (RAnim obj) where
   show (OnFinish running anim) = "OnFinish (" ++ intercalate "," (map show running) ++ ") (" ++ show anim ++ ")"
   show (RBase duration lens tween) = "RBase " ++ show duration ++ " (s)"
+  show (RSet delay lens value) = "RSet " ++ show delay ++ " (s)"
   show (RCreate index _ f) = "RCreate" ++ show (f [])
 
 mkRAnim :: Anim obj -> [RAnim obj]
@@ -42,6 +49,7 @@ mkRAnim (Seq (anim:r)) = [OnFinish (mkRAnim anim) (Seq r)]
 mkRAnim (Seq []) = []
 mkRAnim (Par r) = foldMap mkRAnim r
 mkRAnim (Base index lens tween) = [RBase index lens tween]
+mkRAnim (Set delay lens value) = [RSet delay lens value]
 mkRAnim (Create amount create next) = [RCreate amount create next]
 
 applyAnims :: obj -> Float -> [RAnim obj] -> (obj, [RAnim obj])
@@ -61,6 +69,14 @@ applyAnim obj t (RBase duration lens tween) = let
     then [RBase (duration - t) lens tween]
     else []
   in (newObj, newAnim)
+applyAnim obj t (RSet delay lens value) = let
+  -- update obj, which is returned when delay runs out
+  newObj = obj & lens .~ (value obj)
+  -- update anim
+  newDelay = delay - t
+  in if newDelay > 0
+      then (obj, [RSet (delay - t) lens value])
+      else (newObj, [])
 applyAnim obj t (OnFinish [] next) = (obj, mkRAnim next)
 applyAnim obj t (OnFinish anims next) = let
   (newObj, newAnims) = applyAnims obj t anims

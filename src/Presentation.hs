@@ -8,6 +8,8 @@ import Anim
 
 import Data.Functor.Identity
 import Data.Functor.Const
+import Data.Map (Map)
+import qualified Data.Map as Map
 
 import Graphics.Gloss
 import Graphics.Gloss.Interface.Pure.Game
@@ -15,13 +17,15 @@ import Graphics.Gloss.Interface.Pure.Game
 import Lens.Micro
 import Lens.Micro.TH
 
+data SpritePic = GlossPic Picture | FromCache String
+
 data Sprite f
   = Sprite
   { _spriteX :: Float
   , _spriteY :: Float
   , _spriteScale :: Float
   , _spriteAlpha :: Float
-  , _spritePicture :: Picture
+  , _spritePicture :: SpritePic
   , _spriteIndex :: f Int
   }
 
@@ -44,26 +48,34 @@ data Presentation
   , _scale :: Float
   , _slides :: [Slide]
   , _slidePointer :: Int
+  , _imgCache :: Map String Picture
   }
 
 makeLenses ''Presentation
 
 drawSprite :: Sprite f -> Picture
 drawSprite (Sprite {_spriteX, _spriteY, _spriteAlpha, _spriteScale, _spritePicture}) =
-  _spritePicture &
-  Color (makeColor 1 1 1 _spriteAlpha) &
-  Scale _spriteScale _spriteScale &
-  Translate _spriteX _spriteY
+  case _spritePicture of
+    (GlossPic pic) ->
+       pic &
+       Color (makeColor 1 1 1 _spriteAlpha) &
+       Scale _spriteScale _spriteScale &
+       Translate _spriteX _spriteY
 
-instantiateSpriteTemplate :: Sprite (Const ()) -> Int -> Sprite Identity
-instantiateSpriteTemplate sprite index =
-  sprite { _spriteIndex = Identity index }
+instantiateSpriteTemplate :: Sprite (Const ()) -> Int -> Map String Picture -> Sprite Identity
+instantiateSpriteTemplate sprite index imgCache = let
+  newPic = case sprite ^. spritePicture of
+    (GlossPic pic) -> GlossPic pic
+    (FromCache cacheId) -> case Map.lookup cacheId imgCache of
+      (Just pic) -> GlossPic pic
+      Nothing -> error ("can not find img " ++ show cacheId)
+  in sprite { _spriteIndex = Identity index, _spritePicture = newPic }
 
 createSprite :: Sprite (Const ()) -> Presentation -> (Presentation, Int)
 createSprite template p = let
   newIndex = p ^. current . sprites & length
-  newPresentation = p & current . sprites . ix' newIndex .~ instantiateSpriteTemplate template newIndex
-  in ( newPresentation , newIndex )
+  newPresentation = p & current . sprites . ix' newIndex .~ instantiateSpriteTemplate template newIndex (p ^. imgCache)
+  in (newPresentation, newIndex)
 
 thick :: Picture -> Picture
 thick picture = let
@@ -72,16 +84,30 @@ thick picture = let
 
 slide1 :: Slide
 slide1 =
-  Create 1 (createSprite (Sprite 0 0 0.01 1 (thick (Text "test")) (Const ()))) $ \[t0] ->
+  -- Create 1 (createSprite (Sprite 0 0 0.01 1 (GlossPic (thick (Text "test"))) (Const ()))) $ \[t0] ->
+  Create 1 (createSprite (Sprite 0 0 0.01 1 (FromCache "kulLogo") (Const ()))) $ \[t0] ->
   Base 0.3 (current . sprites . ix' t0 . spriteScale) (To 0.5)
 
 slide2 :: Slide
 slide2 =
-  Create 2 (createSprite (Sprite 0 0 0.1 0.5 (thick (Text "alpha")) (Const ()))) $ \[t0, t1] ->
+  Create 1 (createSprite (Sprite 0 (-20) 0.3 1 (GlossPic (thick (Text "alpha"))) (Const ()))) $ \[t0] ->
+  Create 1 (createSprite (Sprite 0 20 0.3 1 (GlossPic (thick (Text "alpha"))) (Const ()))) $ \[t1] ->
   Seq
-  [ Base 0.5 (current . sprites . ix' t0 . spriteAlpha) (To 1.0)
-  , Base 0.5 (current . sprites . ix' t1 . spriteAlpha) (To 1.0)
+  [ Base 0.5 (current . sprites . ix' t0 . spriteY) (To (-40))
+  , Base 0.5 (current . sprites . ix' t1 . spriteY) (To (40))
   ]
+
+nextSlideAnim :: Maybe Slide -> Anim Presentation
+nextSlideAnim slide =
+  Seq $
+  [ Base 0.7 (current . sprites . traverse . spriteX) (To (-200))
+  , Par
+    [ Set 0 (current . sprites) (\_ -> [])
+    , Set 0 (slidePointer) (\p -> p ^. slidePointer + 1)
+    ]
+  ] ++ case slide of
+          (Just s) -> [s]
+          Nothing -> []
 
 -- main functions
 
@@ -92,8 +118,12 @@ draw p = let
   in Pictures (map drawSprite (currentSprites ++ nextSprites))
 
 handleInput :: Event -> Presentation -> Presentation
-handleInput (EventKey (SpecialKey KeyRight) Down _ _) p@(Presentation {_ranims}) = let
-  newRAnims = _ranims ++ []
+handleInput (EventKey (SpecialKey KeyRight) Down _ _) p@(Presentation {_ranims, _slides, _slidePointer}) = let
+  nextPointer = _slidePointer + 1
+  newAnim = if nextPointer < length _slides
+    then mkRAnim (nextSlideAnim (Just (_slides !! nextPointer)))
+    else mkRAnim (nextSlideAnim (Nothing))
+  newRAnims = _ranims ++ newAnim
   in p { _ranims = newRAnims }
 handleInput _ p = p
 
@@ -102,5 +132,5 @@ update t p@(Presentation {_ranims}) = let
   (newPresentation, newAnims) = applyAnims p t _ranims
   in newPresentation { _ranims = newAnims }
 
-initial :: Presentation
-initial = Presentation (ActiveSlide []) (ActiveSlide []) (mkRAnim slide1) 1 [] 0
+initial :: (Map String Picture) -> Presentation
+initial cache = Presentation (ActiveSlide []) (ActiveSlide []) (mkRAnim slide1) 1 [slide1, slide2] 0 cache
