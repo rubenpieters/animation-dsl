@@ -10,6 +10,7 @@ import Data.Functor.Identity
 import Data.Functor.Const
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe (maybeToList)
 
 import Graphics.Gloss
 import Graphics.Gloss.Interface.Pure.Game
@@ -43,12 +44,13 @@ type Slide = Anim Presentation
 data Presentation
   = Presentation
   { _current :: ActiveSlide
-  , _next :: ActiveSlide
   , _ranims :: [RAnim Presentation]
   , _scale :: Float
   , _slides :: [Slide]
   , _slidePointer :: Int
   , _imgCache :: Map String Picture
+  , _indicatorLine :: Sprite Identity
+  , _indicatorPoint :: Sprite Identity
   }
 
 makeLenses ''Presentation
@@ -61,6 +63,7 @@ drawSprite (Sprite {_spriteX, _spriteY, _spriteAlpha, _spriteScale, _spritePictu
        Color (makeColor 1 1 1 _spriteAlpha) &
        Scale _spriteScale _spriteScale &
        Translate _spriteX _spriteY
+    _ -> error "picture should be converted to gloss picture on creation, not during rendering"
 
 instantiateSpriteTemplate :: Sprite (Const ()) -> Int -> Map String Picture -> Sprite Identity
 instantiateSpriteTemplate sprite index imgCache = let
@@ -97,32 +100,65 @@ slide2 =
   , Base 0.5 (current . sprites . ix' t1 . spriteY) (To (40))
   ]
 
-nextSlideAnim :: Maybe Slide -> Anim Presentation
-nextSlideAnim slide =
-  Seq $
-  [ Base 0.7 (current . sprites . traverse . spriteX) (To (-200))
+prevSlideAnim :: Int -> Int -> Maybe Slide -> Anim Presentation
+prevSlideAnim slideCount nextPointer slide = let
+  nextIndicatorX = (-100) + (200 * (fromIntegral nextPointer / fromIntegral slideCount))
+  in Seq $
+  [ Par
+    [ Base 0.7 (current . sprites . traverse . spriteX) (To (500))
+    , Base 0.7 (current . sprites . traverse . spriteAlpha) (To 0)
+    , Base 0.7 (indicatorPoint . spriteX) (To nextIndicatorX)
+    ]
+  , Par
+    [ Set 0 (current . sprites) (\_ -> [])
+    , Set 0 (slidePointer) (\p -> p ^. slidePointer - 1)
+    ]
+  ] ++ maybeToList slide
+
+nextSlideAnim :: Int -> Int -> Maybe Slide -> Anim Presentation
+nextSlideAnim slideCount nextPointer slide = let
+  nextIndicatorX = (-100) + (200 * (fromIntegral nextPointer / fromIntegral slideCount))
+  in Seq $
+  [ Par
+    [ Base 0.7 (current . sprites . traverse . spriteX) (To (-500))
+    , Base 0.7 (current . sprites . traverse . spriteAlpha) (To 0)
+    , Base 0.7 (indicatorPoint . spriteX) (To nextIndicatorX)
+    ]
   , Par
     [ Set 0 (current . sprites) (\_ -> [])
     , Set 0 (slidePointer) (\p -> p ^. slidePointer + 1)
     ]
-  ] ++ case slide of
-          (Just s) -> [s]
-          Nothing -> []
+  ] ++ maybeToList slide
 
 -- main functions
 
 draw :: Presentation -> Picture
 draw p = let
   currentSprites = p ^. current . sprites
-  nextSprites = p ^. current . sprites
-  in Pictures (map drawSprite (currentSprites ++ nextSprites))
+{-  indicatorY = -200
+  indicatorLine = Line [(-100, indicatorY), (100, indicatorY)] & Color white
+  slideCount :: Float = fromIntegral $ p ^. slides & length
+  currentSlide :: Float = fromIntegral $ p ^. slidePointer
+  indicatorX = (200 * (currentSlide / slideCount)) + (-100)
+  indicatorPoint = ThickCircle 10 20 & Translate indicatorX indicatorY & Color white
+-}
+  in Pictures (map drawSprite (currentSprites ++ [p ^. indicatorLine, p ^. indicatorPoint]))
 
 handleInput :: Event -> Presentation -> Presentation
 handleInput (EventKey (SpecialKey KeyRight) Down _ _) p@(Presentation {_ranims, _slides, _slidePointer}) = let
   nextPointer = _slidePointer + 1
-  newAnim = if nextPointer < length _slides
-    then mkRAnim (nextSlideAnim (Just (_slides !! nextPointer)))
-    else mkRAnim (nextSlideAnim (Nothing))
+  slideCount = length _slides
+  newAnim = if nextPointer < slideCount
+    then mkRAnim (nextSlideAnim slideCount nextPointer (Just (_slides !! nextPointer)))
+    else mkRAnim (nextSlideAnim slideCount nextPointer (Nothing))
+  newRAnims = _ranims ++ newAnim
+  in p { _ranims = newRAnims }
+handleInput (EventKey (SpecialKey KeyLeft) Down _ _) p@(Presentation {_ranims, _slides, _slidePointer}) = let
+  nextPointer = _slidePointer - 1
+  slideCount = length _slides
+  newAnim = if nextPointer >= 0
+    then mkRAnim (prevSlideAnim slideCount nextPointer (Just (_slides !! nextPointer)))
+    else mkRAnim (prevSlideAnim slideCount nextPointer (Nothing))
   newRAnims = _ranims ++ newAnim
   in p { _ranims = newRAnims }
 handleInput _ p = p
@@ -133,4 +169,7 @@ update t p@(Presentation {_ranims}) = let
   in newPresentation { _ranims = newAnims }
 
 initial :: (Map String Picture) -> Presentation
-initial cache = Presentation (ActiveSlide []) (ActiveSlide []) (mkRAnim slide1) 1 [slide1, slide2] 0 cache
+initial cache = let
+  indicatorLine = Sprite (-100) (-200) 20 1 (GlossPic (Line [(0, 0), (10, 0)])) (Identity (-1))
+  indicatorPoint = Sprite (-100) (-200) 2 1 (GlossPic (ThickCircle 1 3)) (Identity (-2))
+  in Presentation (ActiveSlide []) (mkRAnim slide1) 1 [slide1, slide2, slide2, slide2] 0 cache indicatorLine indicatorPoint
