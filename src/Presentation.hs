@@ -100,44 +100,42 @@ slide2 =
   , Base 0.5 (current . sprites . ix' t1 . spriteY) (To (40))
   ]
 
-prevSlideAnim :: Int -> Int -> Maybe Slide -> Anim Presentation
+prevSlideAnim :: Int -> Int -> Slide -> Anim Presentation
 prevSlideAnim slideCount nextPointer slide = let
-  nextIndicatorX = (-100) + (200 * (fromIntegral nextPointer / fromIntegral slideCount))
+  nextIndicatorX = (-100) + (200 * (fromIntegral nextPointer / (fromIntegral slideCount - 1)))
   in Seq $
   [ Par
     [ Base 0.5 (current . sprites . traverse . spriteX) (To (500))
-    , Base 0.5 (current . sprites . traverse . spriteAlpha) (To 0)
     , Base 0.5 (indicatorPoint . spriteX) (To nextIndicatorX)
     ]
   , Par
     [ Set 0 (current . sprites) (\_ -> [])
+    , slide
     , Seq
       [ Base 0.1 (indicatorPoint . spriteScale) (To 2.5)
       , Base 0.05 (indicatorPoint . spriteScale) (To 1.8)
       , Base 0.05 (indicatorPoint . spriteScale) (To 2)
       ]
     ]
-  , Seq (maybeToList slide)
   ]
 
-nextSlideAnim :: Int -> Int -> Maybe Slide -> Anim Presentation
+nextSlideAnim :: Int -> Int -> Slide -> Anim Presentation
 nextSlideAnim slideCount nextPointer slide = let
-  nextIndicatorX = (-100) + (200 * (fromIntegral nextPointer / fromIntegral slideCount))
+  nextIndicatorX = (-100) + (200 * (fromIntegral nextPointer / (fromIntegral slideCount - 1)))
   in Seq $
   [ Par
     [ Base 0.5 (current . sprites . traverse . spriteX) (To (-500))
-    , Base 0.5 (current . sprites . traverse . spriteAlpha) (To 0)
     , Base 0.5 (indicatorPoint . spriteX) (To nextIndicatorX)
     ]
   , Par
     [ Set 0 (current . sprites) (\_ -> [])
+    , slide
     , Seq
       [ Base 0.1 (indicatorPoint . spriteScale) (To 2.5)
       , Base 0.05 (indicatorPoint . spriteScale) (To 1.8)
       , Base 0.05 (indicatorPoint . spriteScale) (To 2)
       ]
     ]
-  , Seq (maybeToList slide)
   ]
 
 -- main functions
@@ -151,19 +149,19 @@ handleInput :: Event -> Presentation -> Presentation
 handleInput (EventKey (SpecialKey KeyRight) Down _ _) p@(Presentation {_ranims, _slides, _slidePointer}) = let
   nextPointer = _slidePointer + 1
   slideCount = length _slides
-  newAnim = if nextPointer < slideCount
-    then mkRAnim (nextSlideAnim slideCount nextPointer (Just (_slides !! nextPointer)))
-    else mkRAnim (nextSlideAnim slideCount nextPointer (Nothing))
+  (newPointer, newAnim) = if nextPointer < slideCount
+    then (nextPointer, mkRAnim (nextSlideAnim slideCount nextPointer (_slides !! nextPointer)))
+    else (_slidePointer, _ranims)
   -- all old animations are cleared when a move key is pressed
-  in p { _slidePointer = nextPointer, _ranims = newAnim }
+  in p { _slidePointer = newPointer, _ranims = newAnim }
 handleInput (EventKey (SpecialKey KeyLeft) Down _ _) p@(Presentation {_ranims, _slides, _slidePointer}) = let
   nextPointer = _slidePointer - 1
   slideCount = length _slides
-  newAnim = if nextPointer >= 0
-    then mkRAnim (prevSlideAnim slideCount nextPointer (Just (_slides !! nextPointer)))
-    else mkRAnim (prevSlideAnim slideCount nextPointer (Nothing))
+  (newPointer, newAnim) = if nextPointer >= 0
+    then (nextPointer, mkRAnim (prevSlideAnim slideCount nextPointer (_slides !! nextPointer)))
+    else (_slidePointer, _ranims)
   -- all old animations are cleared when a move key is pressed
-  in p { _slidePointer = nextPointer, _ranims = newAnim }
+  in p { _slidePointer = newPointer, _ranims = newAnim }
 handleInput _ p = p
 
 update :: Float -> Presentation -> Presentation
