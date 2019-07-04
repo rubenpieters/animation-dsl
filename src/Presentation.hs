@@ -4,6 +4,7 @@
 
 module Presentation where
 
+import Font
 import Anim
 
 import Data.Functor.Identity
@@ -85,6 +86,54 @@ thick picture = let
   f (x,y) = picture & Translate x y
   in Pictures (map f [(0, 0), (-0.5, 0), (0.5, 0), (0, -0.5), (0, 0.5)])
 
+mapWithIndex :: ((a, Int) -> b) -> [a] -> [b]
+mapWithIndex f as = map f (zip as [0..])
+
+slide_Title :: Slide
+slide_Title =
+  let
+  topY = 155
+  botY = 145
+  tgtY = 150
+  topY2 = 5
+  botY2 = -5
+  tgtY2 = 0
+  speed = 0.03
+  chooseY i y1 y2 = if i `mod` 2 == 1 then y1 else y2
+  createFirstNameLetter (p, i) = Create 1 (createSprite (Sprite ((-450) + 90 * (fromIntegral i)) (chooseY i topY botY) 10 0 (GlossPic p) (Const ()))) (\[t] -> introAnim t tgtY)
+  createLastNameLetter (p, i) = Create 1 (createSprite (Sprite ((-450) + 90 * (fromIntegral i)) (chooseY i topY2 botY2) 10 0 (GlossPic p) (Const ()))) (\[t] -> introAnim t tgtY2)
+  introAnim t y = Par
+    [ Base speed (current . sprites . ix' t . spriteAlpha) (To 1)
+    , Base speed (current . sprites . ix' t . spriteY) (To y)
+    ]
+  in Seq
+  [ Seq (mapWithIndex createFirstNameLetter (stringToPic "animation"))
+  , Seq (mapWithIndex createLastNameLetter (stringToPic "dsl"))
+  ]
+
+
+slide_Name :: Slide
+slide_Name =
+  let
+  topY = 155
+  botY = 145
+  tgtY = 150
+  topY2 = 5
+  botY2 = -5
+  tgtY2 = 0
+  speed = 0.03
+  chooseY i y1 y2 = if i `mod` 2 == 1 then y1 else y2
+  createFirstNameLetter (p, i) = Create 1 (createSprite (Sprite ((-450) + 90 * (fromIntegral i)) (chooseY i topY botY) 10 0 (GlossPic p) (Const ()))) (\[t] -> introAnim t tgtY)
+  createLastNameLetter (p, i) = Create 1 (createSprite (Sprite ((-450) + 90 * (fromIntegral i)) (chooseY i topY2 botY2) 10 0 (GlossPic p) (Const ()))) (\[t] -> introAnim t tgtY2)
+  introAnim t y = Par
+    [ Base speed (current . sprites . ix' t . spriteAlpha) (To 1)
+    , Base speed (current . sprites . ix' t . spriteY) (To y)
+    ]
+  in Seq
+  [ Seq (mapWithIndex createFirstNameLetter (stringToPic "ruben"))
+  , Seq (mapWithIndex createLastNameLetter (stringToPic "pieters"))
+  ]
+
 slide1 :: Slide
 slide1 =
   -- Create 1 (createSprite (Sprite 0 0 0.01 1 (GlossPic (thick (Text "test"))) (Const ()))) $ \[t0] ->
@@ -124,7 +173,7 @@ nextSlideAnim slideCount nextPointer slide = let
   nextIndicatorX = (-100) + (200 * (fromIntegral nextPointer / (fromIntegral slideCount - 1)))
   in Seq $
   [ Par
-    [ Base 0.5 (current . sprites . traverse . spriteX) (To (-500))
+    [ Base 0.5 (current . sprites . traverse . spriteX) (To (-600))
     , Base 0.5 (indicatorPoint . spriteX) (To nextIndicatorX)
     ]
   , Par
@@ -173,4 +222,5 @@ initial :: (Map String Picture) -> Presentation
 initial cache = let
   indicatorLine = Sprite (-100) (-200) 20 1 (GlossPic (Line [(0, 0), (10, 0)])) (Identity (-1))
   indicatorPoint = Sprite (-100) (-200) 2 1 (GlossPic (ThickCircle 1 3)) (Identity (-2))
-  in Presentation (ActiveSlide []) (mkRAnim slide1) 1 [slide1, slide2, slide2, slide2] 0 cache indicatorLine indicatorPoint
+  slides = [slide_Title, slide_Name, slide1, slide2]
+  in Presentation (ActiveSlide []) (mkRAnim (head slides)) 1 slides 0 cache indicatorLine indicatorPoint
