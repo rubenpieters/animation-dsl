@@ -15,10 +15,9 @@ import Graphics.Gloss.Interface.Pure.Game
 import Lens.Micro ((&))
 
 main :: IO ()
-main = do
+main = World.main
+{-main = do
   (Just kulLogo) <- loadJuicyPNG ("assets/kul.png")
   let cache = Map.fromList [("kulLogo", kulLogo)]
   play (InWindow "test" (1024, 768) (10, 10)) black 60 (P.initial cache) P.draw P.handleInput P.update
-
-
--- main = play (InWindow "test" (800, 200) (10, 10)) black 60 World.initialWorld World.draw World.handleInput World.update
+-}

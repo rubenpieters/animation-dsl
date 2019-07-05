@@ -4,7 +4,9 @@
 
 module World where
 
-import Anim
+import Prelude hiding (seq)
+
+import AnimEff
 
 import Data.Functor.Identity
 import Data.Functor.Const
@@ -32,7 +34,7 @@ data World
   = World
   { _sprites :: [Sprite Identity]
   , _nextSpriteIndex :: Int
-  , _ranims :: [RAnim World]
+  , _ranims :: [Anim' World]
   , _scaleX :: Float
   , _scaleY :: Float
   }
@@ -60,29 +62,40 @@ createSprite w@(World {_sprites}) = let
   newSprite = Sprite ((-200) + ((fromIntegral newIndex) * 80)) 0 30 0 (Identity newIndex) True box
   in (w { _sprites = _sprites ++ [newSprite] }, newIndex)
 
-initialAnim :: [RAnim World]
-initialAnim = let
-  introAnim index = Par [Base 0.1 (sprites . ix' index . spriteAlpha) (To 1.0), Base 0.1 (sprites . ix' index . spriteY) (To (-10.0))]
-  in mkRAnim $
-  Create 7 createSprite $ \l ->
-  Seq (map introAnim l)
 
-jump :: [RAnim World]
+initialAnim :: Anim' World
+initialAnim = let
+  introAnim index =
+    par
+    [ Bind (Base 0.1 (sprites . ix' index . spriteAlpha) (To 1.0)) (Return)
+    , Bind (Base 0.1 (sprites . ix' index . spriteY) (To (-10.0))) (Return)
+    ]
+  in
+  Bind (Create 7 createSprite) $ \l ->
+  seq (map introAnim l)
+
+jump :: Anim' World
 jump = let
-  jumpAnim index = Seq [Base 0.1 (sprites . ix' index . spriteY) (To 0.0), Base 0.1 (sprites . ix' index . spriteY) (To (-10.0))]
-  in mkRAnim $
-  Seq (map jumpAnim [0..6])
+  jumpAnim index =
+    seq
+    [ Bind (Base 0.1 (sprites . ix' index . spriteY) (To 0.0)) (Return)
+    , Bind (Base 0.1 (sprites . ix' index . spriteY) (To (-10.0))) (Return)
+    ]
+  in
+  seq (map jumpAnim [0..6])
 
 initialWorld :: World
-initialWorld = World [] 0 initialAnim 1 1
+initialWorld = World [] 0 [initialAnim] 1 1
 
 draw :: World -> Picture
-draw (World {_sprites, _scaleX, _scaleY}) = Pictures ((map drawSprite _sprites) ++ [headerText])
+draw w@(World {_sprites, _scaleX, _scaleY}) = let
+  value = w ^? sprites . ix 0 . spriteAlpha
+  in Pictures ((map drawSprite _sprites) ++ [headerText (show value)])
   & Scale _scaleX _scaleY
 
-headerText :: Picture
-headerText = let
-  t (x,y) =  Text "Test" &
+headerText :: String -> Picture
+headerText text = let
+  t (x,y) =  Text text &
     Color white &
     Scale 0.25 0.25 &
     Translate x y
@@ -90,7 +103,7 @@ headerText = let
 
 handleInput :: Event -> World -> World
 handleInput (EventKey (Char 'x') Down _ _) w@(World {_ranims}) = let
-  newRAnims = _ranims ++ jump
+  newRAnims = _ranims ++ [jump]
   in w { _ranims = newRAnims }
 handleInput (EventKey (Char '=') Down _ _) w@(World {_scaleX, _scaleY}) =
   w { _scaleX = _scaleX + 0.2, _scaleY = _scaleY + 0.2 }
@@ -101,4 +114,10 @@ handleInput _ w = w
 update :: Float -> World -> World
 update t w@(World {_ranims}) = let
   (newWorld, newAnims) = applyAnims w t _ranims
-  in newWorld { _ranims = newAnims }
+  filteredAnims = filter f newAnims
+  f (Return _) = False
+  f _ = True
+  in newWorld { _ranims = filteredAnims }
+
+main :: IO ()
+main = play (InWindow "test" (800, 200) (10, 10)) black 60 initialWorld draw handleInput update

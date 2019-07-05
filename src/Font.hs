@@ -119,7 +119,7 @@ lowerM =
   , [O,O,X,X,O,X,X,O,X,O,O]
   , [O,O,X,X,O,X,X,O,X,O,O]
   , [O,O,X,X,O,X,X,O,X,O,O]
-  , [O,O,X,X,O,X,X,O,X,O,O]
+  , [O,O,X,X,O,X,O,O,X,O,O]
   ]
 
 lowerN =
